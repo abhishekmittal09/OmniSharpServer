@@ -97,13 +97,14 @@ namespace OmniSharp.CodeIssues
         
         static NodeResolved GetFirstUnresolvedNode(AstNode tree, CSharpAstResolver resolver)
         {
-            var nodes = tree.Descendants.Select(n => new NodeResolved {
-                Node = n,
-                ResolveResult = resolver.Resolve(n)
-            });
+            var nodes = tree.Descendants.Select(n => new NodeResolved
+                {
+                    Node = n,
+                    ResolveResult = resolver.Resolve(n)
+                });
             
             var node = nodes.LastOrDefault(n => n.ResolveResult is UnknownIdentifierResolveResult);
-            if(node == null)
+            if (node == null)
             {
                 node = nodes.LastOrDefault(n => n.ResolveResult is UnknownMemberResolveResult);
             }
@@ -113,112 +114,51 @@ namespace OmniSharp.CodeIssues
         public FixUsingsResponse FixUsings(OmniSharp.Common.Request request)
         {
             _fileName = request.FileName;
-            Console.WriteLine(_fileName);
             string buffer = RemoveUsings(request.Buffer);
             buffer = SortUsings(buffer);
 
             var content = _bufferParser.ParsedContent(buffer, _fileName);
             var tree = content.SyntaxTree;
-            //var typeSystem = tree.ToTypeSystem();
             var resolver = new CSharpAstResolver(content.Compilation, content.SyntaxTree, content.UnresolvedFile);
-            //System.Console.WriteLine(unresolved.Count());
-            
-            foreach (var nodey in tree.Descendants.Reverse())
-            {
-
-                var res = resolver.Resolve(nodey);
-                System.Console.WriteLine(res);
-                System.Console.WriteLine(nodey);
-            }
-           var node = GetFirstUnresolvedNode(tree, resolver);
+            var node = GetFirstUnresolvedNode(tree, resolver);
             string oldBuffer = null;
             while (node != null && oldBuffer != buffer)
             {
-                
                 oldBuffer = buffer;
-                System.Console.WriteLine("*****");
-                //System.Console.WriteLine(node.Node);
-//System.Console.WriteLine(node.ResolveResult.ToString());
-//System.Console.WriteLine(node.NodeType);
-                //}
-                //foreach(var node in unresolved)
-                //{
-                //if (result is UnknownIdentifierResolveResult)
+                AstNode astNode = node.Node;
+                string name;
+                if (node.ResolveResult is UnknownIdentifierResolveResult)
                 {
-                    //System.Console.WriteLine(node.ToString());
-
-                    AstNode astNode = node.Node;
-                    if (node.ResolveResult is UnknownIdentifierResolveResult)
-                    {
-
-                        var methodName = (node.ResolveResult as UnknownIdentifierResolveResult).Identifier;
-                        //System.Console.WriteLine(methodName);
-                        //System.Console.WriteLine(methodName);
-                        //foreach(var x in astNode.Descendants)
-                        //{
-                        //System.Console.WriteLine(x);
-                            
-                        //}
-                        astNode = astNode.Descendants.FirstOrDefault(n => n.ToString() == methodName);
-                        Console.WriteLine(astNode.GetRegion().BeginColumn);
-                        //while (astNode.ToString() != methodName)
-                        //{
-                        //astNode = astNode.NextSibling;
-                        Console.WriteLine(astNode);
-                        //}
-                    }
-                    if (node.ResolveResult is UnknownMemberResolveResult)
-                    {
-
-                        var methodName = (node.ResolveResult as UnknownMemberResolveResult).MemberName;
-                        //System.Console.WriteLine(methodName);
-                        //System.Console.WriteLine(methodName);
-                        //foreach(var x in astNode.Descendants)
-                        //{
-                        //System.Console.WriteLine(x);
-                        //System.Console.WriteLine(x.GetRegion().BeginColumn);
-                            
-                        //}
-                        astNode = astNode.Descendants.FirstOrDefault(n => n.ToString() == methodName);
-                        //while (astNode.ToString() != methodName)
-                        //{
-                        //astNode = astNode.NextSibling;
-                        //System.Console.WriteLine(astNode.ToString());
-                        //}
-                    }
-                    request.Buffer = buffer;
-                    request.Line = astNode.Region.BeginLine;
-                    request.Column = astNode.Region.BeginColumn ;
-
-                    //System.Console.WriteLine(node.Node.LastChild);
-                    //System.Console.WriteLine(request.Line);
-                    System.Console.WriteLine(request.Column);
-                    var context = OmniSharpRefactoringContext.GetContext(_bufferParser, request);
-                    var action = new AddUsingAction();
-                    var actions2 = action.GetActions(context);
-                    using (var script = new OmniSharpScript(context, _config))
-                    {
-                        foreach (var action2 in actions2)
-                        {
-                        if (action2 != null)
-                        {
-                        System.Console.WriteLine(action2.Description);
-                        }
-                        }
-                        if (actions2.Any())
-                            actions2.First().Run(script);
-                    }
-                    buffer = context.Document.Text;
-                    if(oldBuffer == buffer)
-                    {
-                        Console.WriteLine("Something went wrong. oops");
-                        Console.WriteLine(astNode);
-                    }
-                   
-                    content = _bufferParser.ParsedContent(buffer, request.FileName);
-                    resolver = new CSharpAstResolver(content.Compilation, content.SyntaxTree, content.UnresolvedFile);
+                    name = (node.ResolveResult as UnknownIdentifierResolveResult).Identifier;
                 }
-           node = GetFirstUnresolvedNode(content.SyntaxTree, resolver);
+                if (node.ResolveResult is UnknownMemberResolveResult)
+                {
+                    name = (node.ResolveResult as UnknownMemberResolveResult).MemberName;
+                }
+                astNode = astNode.Descendants.FirstOrDefault(n => n.ToString() == methodName);
+                request.Buffer = buffer;
+                request.Line = astNode.Region.BeginLine;
+                request.Column = astNode.Region.BeginColumn;
+
+                var context = OmniSharpRefactoringContext.GetContext(_bufferParser, request);
+                var action = new AddUsingAction();
+                var actions2 = action.GetActions(context);
+                using (var script = new OmniSharpScript(context, _config))
+                {
+                    if (actions2.Any())
+                        actions2.First().Run(script);
+                }
+                buffer = context.Document.Text;
+                if (oldBuffer == buffer)
+                {
+                    Console.WriteLine("Something went wrong. oops");
+                    Console.WriteLine(astNode);
+                }
+                   
+                content = _bufferParser.ParsedContent(buffer, request.FileName);
+                resolver = new CSharpAstResolver(content.Compilation, content.SyntaxTree, content.UnresolvedFile);
+                
+                node = GetFirstUnresolvedNode(content.SyntaxTree, resolver);
             }
 
             return new FixUsingsResponse(buffer);
