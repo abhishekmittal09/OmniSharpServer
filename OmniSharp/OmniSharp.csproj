@@ -248,6 +248,8 @@
     <Compile Include="UpdateBuffer\UpdateBufferModule.cs" />
     <Compile Include="CodeActions\GetCodeActionRequest.cs" />
     <Compile Include="Solution\ProjectFinder.cs" />
+    <Compile Include="CodeActions\FixUsingsHandler.cs" />
+    <Compile Include="CodeActions\FixUsingsResponse.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="app.config" />
