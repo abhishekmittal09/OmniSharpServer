@@ -126,7 +126,7 @@ namespace OmniSharp.CodeIssues
             {
                 oldBuffer = buffer;
                 AstNode astNode = node.Node;
-                string name;
+                string name = null;
                 if (node.ResolveResult is UnknownIdentifierResolveResult)
                 {
                     name = (node.ResolveResult as UnknownIdentifierResolveResult).Identifier;
