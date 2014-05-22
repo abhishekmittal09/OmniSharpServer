@@ -135,7 +135,7 @@ namespace OmniSharp.CodeIssues
                 {
                     name = (node.ResolveResult as UnknownMemberResolveResult).MemberName;
                 }
-                astNode = astNode.Descendants.FirstOrDefault(n => n.ToString() == methodName);
+                astNode = astNode.Descendants.FirstOrDefault(n => n.ToString() == name);
                 request.Buffer = buffer;
                 request.Line = astNode.Region.BeginLine;
                 request.Column = astNode.Region.BeginColumn;
