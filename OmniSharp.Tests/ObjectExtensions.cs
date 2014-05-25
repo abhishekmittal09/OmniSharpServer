@@ -8,7 +8,7 @@ namespace OmniSharp.Tests
     {
         public static void ShouldEqual<T>(this IEnumerable<T> actual, params T[] expected)
         {
-            CollectionAssert.AreEqual(expected, actual);
+            CollectionAssert.AreEqual(expected, actual.ToArray());
         }
         
         public static void ShouldContainOnly<T>(this IEnumerable<T> actual, params T[] expected)

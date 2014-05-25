@@ -21,7 +21,6 @@ namespace OmniSharp.CodeIssues
         public string Buffer { get; private set; }
     }
 
-
     public class FixUsingsHandler
     {
         private readonly BufferParser _bufferParser;
@@ -42,6 +41,7 @@ namespace OmniSharp.CodeIssues
                 {
                     if (action != null)
                     {
+                        Console.WriteLine(action.Severity);
                         action.Run(script);
                     }
                 }
@@ -94,7 +94,8 @@ namespace OmniSharp.CodeIssues
 
             return buffer;
         }
-        
+
+
         static NodeResolved GetFirstUnresolvedNode(AstNode tree, CSharpAstResolver resolver)
         {
             var nodes = tree.Descendants.Select(n => new NodeResolved
@@ -102,13 +103,42 @@ namespace OmniSharp.CodeIssues
                     Node = n,
                     ResolveResult = resolver.Resolve(n)
                 });
-            
-            var node = nodes.LastOrDefault(n => n.ResolveResult is UnknownIdentifierResolveResult);
+
+            var node = nodes.FirstOrDefault(n => n.ResolveResult is UnknownIdentifierResolveResult);
             if (node == null)
             {
-                node = nodes.LastOrDefault(n => n.ResolveResult is UnknownMemberResolveResult);
+                node = nodes.FirstOrDefault(n => n.ResolveResult is UnknownMemberResolveResult);
             }
             return node;
+        }
+
+        string AddLinqForQueryIfMissing(string buffer)
+        {
+            var content = _bufferParser.ParsedContent(buffer, _fileName);
+            var tree = content.SyntaxTree;
+            if (!tree.Descendants.OfType<UsingDeclaration>().Any(u => u.Namespace.Equals("System.Linq")))
+            {
+            
+                var linqQuery = tree.Descendants.FirstOrDefault(n => n.NodeType == NodeType.QueryClause);
+                if (linqQuery != null)
+                {
+                    buffer = AddUsingLinq(linqQuery, buffer);
+                }
+            }
+            return buffer;
+        }
+
+        string AddUsingLinq(AstNode astNode, string buffer)
+        {
+            var request = new OmniSharp.Common.Request();
+            request.FileName = _fileName;
+            request.Buffer = buffer;
+            request.Line = astNode.Region.BeginLine;
+            request.Column = astNode.Region.BeginColumn;
+            var context = OmniSharpRefactoringContext.GetContext(_bufferParser, request);
+            var script = new OmniSharpScript(context, _config);
+            UsingHelper.InsertUsingAndRemoveRedundantNamespaceUsage(context, script, "System.Linq");
+            return context.Document.Text;
         }
 
         public FixUsingsResponse FixUsings(OmniSharp.Common.Request request)
@@ -116,39 +146,51 @@ namespace OmniSharp.CodeIssues
             _fileName = request.FileName;
             string buffer = RemoveUsings(request.Buffer);
             buffer = SortUsings(buffer);
-
+            buffer = AddLinqForQueryIfMissing(buffer);
             var content = _bufferParser.ParsedContent(buffer, _fileName);
             var tree = content.SyntaxTree;
+            OmniSharpRefactoringContext context;
+
             var resolver = new CSharpAstResolver(content.Compilation, content.SyntaxTree, content.UnresolvedFile);
+
             var node = GetFirstUnresolvedNode(tree, resolver);
+
             string oldBuffer = null;
             while (node != null && oldBuffer != buffer)
             {
                 oldBuffer = buffer;
                 AstNode astNode = node.Node;
+
                 string name = null;
-                if (node.ResolveResult is UnknownIdentifierResolveResult)
+                var unknownIdentifierResolveResult = node.ResolveResult as UnknownIdentifierResolveResult;
+                if (unknownIdentifierResolveResult != null)
                 {
-                    name = (node.ResolveResult as UnknownIdentifierResolveResult).Identifier;
+                    name = unknownIdentifierResolveResult.Identifier;
                 }
                 if (node.ResolveResult is UnknownMemberResolveResult)
                 {
                     name = (node.ResolveResult as UnknownMemberResolveResult).MemberName;
                 }
                 astNode = astNode.Descendants.FirstOrDefault(n => n.ToString() == name);
+                
                 request.Buffer = buffer;
                 request.Line = astNode.Region.BeginLine;
                 request.Column = astNode.Region.BeginColumn;
 
-                var context = OmniSharpRefactoringContext.GetContext(_bufferParser, request);
+                context = OmniSharpRefactoringContext.GetContext(_bufferParser, request);
                 var action = new AddUsingAction();
                 var actions2 = action.GetActions(context);
                 using (var script = new OmniSharpScript(context, _config))
                 {
-                    if (actions2.Any())
-                        actions2.First().Run(script);
+                    var usingActions = actions2.Where(a => a.Description.StartsWith("using"));
+                    foreach (var act in usingActions)
+                    {
+                        act.Run(script);
+                    }
                 }
                 buffer = context.Document.Text;
+
+
                 if (oldBuffer == buffer)
                 {
                     Console.WriteLine("Something went wrong. oops");

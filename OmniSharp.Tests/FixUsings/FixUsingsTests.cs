@@ -14,6 +14,11 @@ namespace OmniSharp.Tests.FixUsings
     [TestFixture]
     public class FixUsingsTests
     {
+        public FixUsingsTests()
+        {
+            
+        }
+
         [Test]
         public void Should_remove_unused_using()
         {
@@ -63,7 +68,7 @@ namespace ns2
 "
 .FixUsings()
 .ShouldEqual("using ns1;", "using ns2;");
-    }
+        }
         [Test]
         public void Should_add_using()
         {
@@ -145,12 +150,75 @@ public class test {
 public class test {
     public test()
     {
-        var uri = new Uri("""");
+        var s = new String('x');
     }
 }
 ".FixUsings()
 .ShouldEqual("using System;");
         }
+
+        [Test]
+        public void Should_add_linq()
+        {
+            @"
+public class test {
+    public test()
+    {
+        var first = new List<string>().First();
+    }
+}
+".FixUsings()
+.ShouldEqual("using System.Collections.Generic;", "using System.Linq;");
+        }
+
+        [Test]
+        public void Should_also_add_linq()
+        {
+            @"
+public class test {
+    public test()
+    {
+        var first = new List<string>().First(c => c == 'x');
+    }
+}
+".FixUsings()
+.ShouldEqual("using System.Collections.Generic;", "using System.Linq;");
+        }
+
+        [Test]
+        public void Should_add_linq_for_query()
+        {
+            @"
+using System.Collections.Generic;
+public class test {
+    public test()
+    {
+        var list = new List<string>();
+        var whatever = (from s in list select s);
+    }
+}
+".FixUsings ()
+.ShouldEqual ("using System.Collections.Generic;", "using System.Linq;");
+        }
+            [Test]
+            public void Should_not_add_linq_twice()
+            {
+                @"
+using System.Collections.Generic;
+using System.Linq;
+
+public class test {
+    public test()
+    {
+        var list = new List<string>();
+        var whatever = (from s in list select s);
+    }
+}
+".FixUsings()
+ .ShouldEqual("using System.Collections.Generic;", "using System.Linq;");
+        }
+     
+
     }
 
     public static class FixUsingsExtension
@@ -170,7 +238,7 @@ public class test {
             request.Line = int.MaxValue;
             var response = handler.FixUsings(request);
             Console.WriteLine(response.Buffer);
-            return response.Buffer.Split(new [] {"\n", "\r\n"}, StringSplitOptions.RemoveEmptyEntries).Where(line => line.Contains("using"));
+            return response.Buffer.Split(new [] { "\n", "\r\n" }, StringSplitOptions.RemoveEmptyEntries).Where(line => line.Contains("using"));
         }
 
     }
