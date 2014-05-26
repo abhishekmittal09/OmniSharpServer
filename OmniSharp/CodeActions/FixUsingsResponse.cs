@@ -1,16 +1,14 @@
-using Nancy;
-using Nancy.ModelBinding;
-using OmniSharp.CodeIssues;
+using System.Collections.Generic;
+using OmniSharp.Common;
 
-public class FixUsingsModule : NancyModule
+public class FixUsingsResponse
 {
-    public FixUsingsModule(FixUsingsHandler fixUsingsHandler)
+    public FixUsingsResponse(string buffer, IEnumerable<QuickFix> ambiguous)
     {
-        Post["/fixusings"] = x =>
-        {
-            var req = this.Bind<OmniSharp.Common.Request>();
-            var res = fixUsingsHandler.FixUsings(req);
-            return Response.AsJson(res);
-        };
+        Buffer = buffer;
+        AmbiguousResults = ambiguous;
     }
+
+    public string Buffer { get; private set; }
+    public IEnumerable<QuickFix> AmbiguousResults { get; private set; }
 }

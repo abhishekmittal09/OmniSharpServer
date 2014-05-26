@@ -14,11 +14,6 @@ namespace OmniSharp.Tests.FixUsings
     [TestFixture]
     public class FixUsingsTests
     {
-        public FixUsingsTests()
-        {
-            
-        }
-
         [Test]
         public void Should_remove_unused_using()
         {
@@ -27,6 +22,7 @@ using System;
 public class {}"
             .FixUsings().ShouldBeEmpty();
         }
+
         [Test]
         public void Should_remove_multiple_unused_usings()
         {
@@ -69,6 +65,7 @@ namespace ns2
 .FixUsings()
 .ShouldEqual("using ns1;", "using ns2;");
         }
+
         [Test]
         public void Should_add_using()
         {
@@ -188,6 +185,7 @@ public class test {
         [Test]
         public void Should_add_linq_for_query()
         {
+
             @"
 using System.Collections.Generic;
 public class test {
@@ -197,13 +195,14 @@ public class test {
         var whatever = (from s in list select s);
     }
 }
-".FixUsings ()
-.ShouldEqual ("using System.Collections.Generic;", "using System.Linq;");
+".FixUsings()
+.ShouldEqual("using System.Collections.Generic;", "using System.Linq;");
         }
-            [Test]
-            public void Should_not_add_linq_twice()
-            {
-                @"
+
+        [Test]
+        public void Should_not_add_linq_twice()
+        {
+            @"
 using System.Collections.Generic;
 using System.Linq;
 
@@ -217,27 +216,96 @@ public class test {
 ".FixUsings()
  .ShouldEqual("using System.Collections.Generic;", "using System.Linq;");
         }
-     
 
+        [Test]
+        public void Should_not_add_ambiguous_usings()
+        {
+            @"
+public class test {
+    class1 ns1 = new class1();
+}
+
+namespace ns1
+{
+    public class class1{}
+}
+
+namespace ns2
+{
+    public class class1{}
+}
+".FixUsings()
+.ShouldBeEmpty();
+
+        }
+
+        [Test]
+        public void Should_not_abort_when_ambiguous_usings_found()
+        {
+            @"
+public class test {
+
+    var ns1 = new class1();
+    var s = new String('x');
+}
+
+namespace ns1
+{
+    public class class1{}
+}
+
+namespace ns2
+{
+    public class class1{}
+}
+".FixUsings()
+.ShouldEqual("using System;");
+        }
+
+        [Test]
+        public void Should_set_ambiguous_results()
+        {
+            @"
+public class test {
+
+    class1 ns1 = new class1();
+    var s = new String('x');
+}
+
+namespace ns1
+{
+    public class class1{}
+}
+
+namespace ns2
+{
+    public class class1{}
+}
+".GetFixUsingsResponse().AmbiguousResults.First().Text
+.ShouldEqual("`class1` is ambiguous");
+        }
     }
 
     public static class FixUsingsExtension
     {
-        public static IEnumerable<string> FixUsings(this string buffer)
+        public static FixUsingsResponse GetFixUsingsResponse(this string buffer)
         {
-            var solution = new FakeSolutionBuilder()
-                .AddFile(buffer)
-                .Build();
-            
+            var solution = new FakeSolutionBuilder().AddFile(buffer).Build();
             var bufferParser = new BufferParser(solution);
-            var handler = new FixUsingsHandler(bufferParser, new OmniSharpConfiguration());
+            var handler = new FixUsingsHandler(bufferParser, new Logger(Verbosity.Quiet), new OmniSharpConfiguration());
             var request = new Request();
             request.Buffer = buffer;
             request.FileName = "myfile";
             // line number should be irrelevant
             request.Line = int.MaxValue;
             var response = handler.FixUsings(request);
-            Console.WriteLine(response.Buffer);
+            return response;
+        }
+
+        public static IEnumerable<string> FixUsings(this string buffer)
+        {
+            var response = GetFixUsingsResponse(buffer);
+            
             return response.Buffer.Split(new [] { "\n", "\r\n" }, StringSplitOptions.RemoveEmptyEntries).Where(line => line.Contains("using"));
         }
 

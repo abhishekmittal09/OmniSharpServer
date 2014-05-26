@@ -250,6 +250,7 @@
     <Compile Include="Solution\ProjectFinder.cs" />
     <Compile Include="CodeActions\FixUsingsHandler.cs" />
     <Compile Include="CodeActions\FixUsingsResponse.cs" />
+    <Compile Include="CodeActions\FixUsingsModule.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="app.config" />
