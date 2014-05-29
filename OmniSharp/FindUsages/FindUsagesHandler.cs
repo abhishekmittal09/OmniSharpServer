@@ -9,7 +9,6 @@ using ICSharpCode.NRefactory.CSharp.Resolver;
 using ICSharpCode.NRefactory.CSharp.TypeSystem;
 using ICSharpCode.NRefactory.Semantics;
 using ICSharpCode.NRefactory.TypeSystem;
-using MonoDevelop.Ide.FindInFiles;
 using OmniSharp.Common;
 using OmniSharp.Extensions;
 using OmniSharp.Parser;

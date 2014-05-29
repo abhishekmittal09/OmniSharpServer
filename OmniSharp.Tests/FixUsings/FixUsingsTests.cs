@@ -1,3 +1,4 @@
+
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -8,7 +9,6 @@ using OmniSharp.Configuration;
 using OmniSharp.Parser;
 using Should;
 using OmniSharp.Tests.Rename;
-
 namespace OmniSharp.Tests.FixUsings
 {
     [TestFixture]
@@ -244,7 +244,7 @@ namespace ns2
         {
             @"
 public class test {
-
+    var l = new List<class1>()
     var ns1 = new class1();
     var s = new String('x');
 }
@@ -259,7 +259,7 @@ namespace ns2
     public class class1{}
 }
 ".FixUsings()
-.ShouldEqual("using System;");
+                .ShouldEqual("using System;", "using System.Collections.Generic;");
         }
 
         [Test]

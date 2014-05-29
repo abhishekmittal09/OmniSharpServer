@@ -1,4 +1,3 @@
-using System;
 using System.Collections.Generic;
 using System.Linq;
 using ICSharpCode.NRefactory.CSharp;
@@ -18,7 +17,6 @@ namespace OmniSharp.CodeIssues
         readonly OmniSharpConfiguration _config;
         string _fileName;
         Logger _logger;
-        List<QuickFix> _ambiguous = new List<QuickFix>();
 
         public FixUsingsHandler(BufferParser bufferParser, Logger logger, OmniSharpConfiguration config)
         {
@@ -34,64 +32,75 @@ namespace OmniSharp.CodeIssues
             string buffer = RemoveUsings(request.Buffer);
             buffer = SortUsings(buffer);
             buffer = AddLinqForQueryIfMissing(buffer);
-            var content = _bufferParser.ParsedContent(buffer, _fileName);
-            var tree = content.SyntaxTree;
-            OmniSharpRefactoringContext context;
 
-            var resolver = new CSharpAstResolver(content.Compilation, content.SyntaxTree, content.UnresolvedFile);
-            var node = GetNextUnresolvedNode(tree, resolver);
+            bool ambiguousResultsFound = false;
+            bool usingsAdded = true;
 
-            while (node != null)
+            while (usingsAdded)
             {
-                string oldBuffer = buffer;
+                var content = _bufferParser.ParsedContent(buffer, _fileName);
+                var tree = content.SyntaxTree;
 
-                var astNode = GetNodeToAddUsing(node);
-                
-                request = CreateRequest(buffer, astNode);
-
-                context = OmniSharpRefactoringContext.GetContext(_bufferParser, request);
-                var action = new AddUsingAction();
-                var actions = action.GetActions(context);
-                using (var script = new OmniSharpScript(context, _config))
+                var resolver = new CSharpAstResolver(content.Compilation, content.SyntaxTree, content.UnresolvedFile);
+                var unresolvedNodes = GetAllUnresolvedNodes(tree, resolver).Select(nr => GetNodeToAddUsing(nr));
+                usingsAdded = false;
+                request.Buffer = buffer;
+                var outerContext = OmniSharpRefactoringContext.GetContext(_bufferParser, request);
+                using (var script = new OmniSharpScript(outerContext, _config))
                 {
-                    var usingActions = actions.Where(a => a.Description.StartsWith("using"));
-                    if (usingActions.Count() == 1)
+                    foreach (var unresolvedNode in unresolvedNodes)
                     {
-                        foreach (var act in usingActions)
+                        _logger.Info(unresolvedNode);
+
+                        var requestForNode = CreateRequest(buffer, unresolvedNode);
+                        var innerContext = OmniSharpRefactoringContext.GetContext(_bufferParser, requestForNode);
+                        var addUsingAction = new AddUsingAction();
+                        var actions = addUsingAction.GetActions(innerContext).Where(a => a.Description.StartsWith("using")).ToArray();
+
+                        if (actions.Length == 1)
                         {
-                            act.Run(script);
+                            var a = actions[0];
+                            _logger.Info("Adding " + a.Description);
+                            a.Run(script);
+                            usingsAdded = true;
+                            break;
                         }
-                    }
-                    else
-                    {
-                        _ambiguous.Add(new QuickFix
-                            { 
-                                Column = request.Column,
-                                Line = request.Line,
-                                FileName = request.FileName,
-                                Text = "`" + astNode + "`" + " is ambiguous"
-                            });
-                        node = GetNextUnresolvedNode(tree, astNode, resolver);
-                        continue;
+                        ambiguousResultsFound |= actions.Length > 1;
                     }
                 }
-                buffer = context.Document.Text;
-
-                if (oldBuffer == buffer)
-                {
-                    _logger.Error("Something went wrong. oops");
-                    _logger.Error(astNode);
-                    node = GetNextUnresolvedNode(tree, astNode, resolver);
-                    continue;
-                }
-                   
-                content = _bufferParser.ParsedContent(buffer, request.FileName);
-                resolver = new CSharpAstResolver(content.Compilation, content.SyntaxTree, content.UnresolvedFile);
-                
-                node = GetNextUnresolvedNode(content.SyntaxTree, resolver);
+                buffer = outerContext.Document.Text;
             }
 
-            return new FixUsingsResponse(buffer, _ambiguous);
+            IEnumerable<QuickFix> ambiguous = Enumerable.Empty<QuickFix>();
+            if (ambiguousResultsFound)
+            {
+                ambiguous = GetAmbiguousNodes(buffer, request.FileName);
+            }
+            return new FixUsingsResponse(buffer, ambiguous);
+        }
+
+        IEnumerable<QuickFix> GetAmbiguousNodes(string buffer, string fileName)
+        {
+            var ambiguous = new List<QuickFix>();
+            var content = _bufferParser.ParsedContent(buffer, fileName);
+            var resolver = new CSharpAstResolver(content.Compilation, content.SyntaxTree, content.UnresolvedFile);
+
+
+            IEnumerable<NodeResolved> nodes = GetResolvedNodes(content.SyntaxTree, resolver)
+                    .Where(n => n.ResolveResult is UnknownMemberResolveResult
+                                                  || n.ResolveResult is UnknownIdentifierResolveResult);
+
+            foreach (var unidentifiedNode in nodes.Select(r => GetNodeToAddUsing(r)).Distinct().OrderBy(n => n.StartLocation))
+            {
+                ambiguous.Add(new QuickFix
+                    { 
+                        Column = unidentifiedNode.StartLocation.Column,
+                        Line = unidentifiedNode.StartLocation.Line,
+                        FileName = fileName,
+                        Text = "`" + unidentifiedNode + "`" + " is ambiguous"
+                    });
+            }
+            return ambiguous;
         }
 
         static AstNode GetNodeToAddUsing(NodeResolved node)
@@ -115,7 +124,6 @@ namespace OmniSharp.CodeIssues
         {
             using (var script = new OmniSharpScript(context, _config))
             {
-
                 foreach (var action in actions)
                 {
                     if (action != null)
@@ -150,7 +158,7 @@ namespace OmniSharp.CodeIssues
 
         Request CreateRequest(string buffer, AstNode node)
         {
-            var request = new OmniSharp.Common.Request();
+            var request = new Request();
             request.Buffer = buffer;
             request.Line = node.Region.BeginLine;
             request.Column = node.Region.BeginColumn;
@@ -162,7 +170,7 @@ namespace OmniSharp.CodeIssues
         {
             var content = _bufferParser.ParsedContent(buffer, _fileName);
             var tree = content.SyntaxTree;
-            var firstUsing = tree.Children.FirstOrDefault(IsUsingDeclaration);
+            var firstUsing = tree.Descendants.FirstOrDefault(IsUsingDeclaration);
 
             if (firstUsing != null)
             {
@@ -176,7 +184,6 @@ namespace OmniSharp.CodeIssues
             return buffer;
         }
 
-
         static NodeResolved GetNextUnresolvedNode(AstNode tree, CSharpAstResolver resolver)
         {
             return GetNextUnresolvedNode(tree, tree.FirstChild, resolver);
@@ -184,18 +191,39 @@ namespace OmniSharp.CodeIssues
 
         static NodeResolved GetNextUnresolvedNode(AstNode tree, AstNode after, CSharpAstResolver resolver)
         {
-            var nodes = tree.Descendants.SkipWhile(n => n != after).Select(n => new NodeResolved
-                {
-                    Node = n,
-                    ResolveResult = resolver.Resolve(n)
-                });
-
+            var nodes = GetResolvedNodes(tree, after, resolver);
             var node = nodes.FirstOrDefault(n => n.ResolveResult is UnknownIdentifierResolveResult);
             if (node == null)
             {
                 node = nodes.FirstOrDefault(n => n.ResolveResult is UnknownMemberResolveResult);
             }
             return node;
+        }
+
+        static IEnumerable<NodeResolved> GetResolvedNodes(AstNode tree, CSharpAstResolver resolver)
+        {
+            return GetResolvedNodes(tree, tree.FirstChild, resolver);
+        }
+
+        static IEnumerable<NodeResolved> GetAllUnresolvedNodes(AstNode tree, CSharpAstResolver resolver)
+        {
+            var nodes = tree.Descendants.OrderBy(n => n.StartLocation).Select(n => new NodeResolved
+                {
+                    Node = n,
+                    ResolveResult = resolver.Resolve(n)
+                });
+
+            return nodes.Where(n => n.ResolveResult is UnknownIdentifierResolveResult ||
+                n.ResolveResult is UnknownMemberResolveResult);
+        }
+
+        static IEnumerable<NodeResolved> GetResolvedNodes(AstNode tree, AstNode after, CSharpAstResolver resolver)
+        {
+            return tree.Descendants.Distinct().SkipWhile(n => n != after).Skip(1).OrderBy(n => n.StartLocation).Select(n => new NodeResolved
+                {
+                    Node = n,
+                    ResolveResult = resolver.Resolve(n)
+                });
         }
 
         string AddLinqForQueryIfMissing(string buffer)
@@ -222,12 +250,12 @@ namespace OmniSharp.CodeIssues
             return context.Document.Text;
         }
 
-        private static bool IsUsingDeclaration(AstNode node)
+        static bool IsUsingDeclaration(AstNode node)
         {
             return node is UsingDeclaration || node is UsingAliasDeclaration;
         }
 
-        private class NodeResolved
+        class NodeResolved
         {
             public AstNode Node { get; set; }
             public ResolveResult ResolveResult { get; set; }
